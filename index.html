@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>应付台账 · 防漏记</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧾</text></svg>">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="layout">
+    <aside id="sidebar">
+      <div class="brand">🧾 应付台账</div>
+      <nav id="nav">
+        <button class="nav-item on" data-nav="dashboard"><span class="nav-icon">🏠</span><span>工作台</span></button>
+        <button class="nav-item" data-nav="documents"><span class="nav-icon">📋</span><span>单据台账</span></button>
+        <button class="nav-item" data-nav="leads"><span class="nav-icon">📡</span><span>采购线索</span></button>
+        <button class="nav-item" data-nav="suppliers"><span class="nav-icon">🏢</span><span>供应商</span></button>
+        <button class="nav-item" data-nav="settings"><span class="nav-icon">⚙️</span><span>设置</span></button>
+      </nav>
+      <button id="sync-chip" class="sync-chip" hidden aria-label="同步状态"></button>
+    </aside>
+
+    <main id="main">
+      <section id="page-dashboard" class="page active"></section>
+      <section id="page-documents" class="page"></section>
+      <section id="page-leads" class="page"></section>
+      <section id="page-suppliers" class="page"></section>
+      <section id="page-settings" class="page"></section>
+    </main>
+  </div>
+
+  <div id="modal-overlay" hidden>
+    <div id="modal"></div>
+  </div>
+
+  <div id="toast" hidden></div>
+
+  <script src="lib/dexie.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

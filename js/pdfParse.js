@@ -153,7 +153,7 @@ export function parseInvoiceText(text) {
   const res = {
     supplierName: null, docNumber: null, docDate: null, dueDate: null,
     netAmount: null, taxRate: null, taxAmount: null, grossAmount: null,
-    iban: null, costCenter: null,
+    iban: null, costCenter: null, summary: null,
   };
 
   const NUM_STOP = /^(vom|vom$|datum|nr|rechnung|lieferschein|beleg|seite|kunde)$/i;
@@ -200,6 +200,21 @@ export function parseInvoiceText(text) {
     if (!res.costCenter) {
       const m = ln.match(/(?:kostenstelle|kosten-?\s?nr\.?|cost\s*center)\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9\/\-.]{0,30})/i);
       if (m && !NUM_STOP.test(m[1])) res.costCenter = m[1];
+    }
+
+    // 摘要：Bezeichnung 标签后的描述文本（值同行；为空时取下一行非标签行）
+    if (!res.summary) {
+      const m = ln.match(/(?:^|\s)bezeichnung\s*[:\-]?\s*(.*)$/i);
+      if (m) {
+        let v = (m[1] || '').trim();
+        if (!v && lines[i + 1]) v = lines[i + 1].trim();
+        // 排除：表格列头（Pos Bezeichnung Menge ...）、纯数字/日期、疑似其他标签
+        const isTableHeader = /\b(menge|einzelpreis|preis|gesamt|zwischensumme|mwst|ust|steuer|nummer|datum|iban|seite|menge\b|betrag)\b/i.test(v);
+        const looksLikeLabel = /^(iban|mwst|ust|steuer|datum|rechnung|lieferschein|kunde|zahlbar|zahlungsziel|faellig|f[aä]llig|kostenstelle|hinweis|summ)/i.test(v);
+        if (v && v.length <= 120 && /[A-Za-z]{3}/.test(v) && !/^\d/.test(v) && !isTableHeader && !looksLikeLabel) {
+          res.summary = v;
+        }
+      }
     }
   }
 
@@ -256,9 +271,9 @@ export function parseInvoiceText(text) {
     res.grossAmount = mx;
   }
 
-  // 'Zahlbar innerhalb 14 Tagen' → 由单据日推算到期日
+  // 按天数推算到期日：'Zahlbar innerhalb 14 Tagen'、'Zahlungsziel: 30 Tage netto' 等
   if (!res.dueDate && res.docDate) {
-    const m = String(text).match(/(?:zahlbar|zahlung)\s+innerhalb\s+(?:von\s+)?(\d{1,3})\s*(?:tagen|tage|days)/i);
+    const m = String(text).match(/(?:zahlungsziel|zahlbar|zahlung)\s*[:\-]?\s*(?:innerhalb\s+(?:von\s+)?|von\s+)?(\d{1,3})\s*(?:tage|tagen|days)\b/i);
     if (m) res.dueDate = addDays(res.docDate, +m[1]);
   }
 

@@ -71,7 +71,9 @@ export async function addDocument(row, pdf = null) {
 }
 
 export async function updateDocument(id, patch, pdf = null) {
-  validateDoc({ ...patch });
+  // 校验合并后的完整单据（补丁可能是部分字段，如供应商重算只传 dueDate）
+  const cur = await db.documents.get(id);
+  validateDoc({ ...(cur || {}), ...patch });
   await db.transaction('rw', [db.documents, db.pdfFiles, db.leads], async () => {
     await db.documents.update(id, { ...patch, updatedAt: Date.now() });
     if (pdf) await db.pdfFiles.put({ docId: id, blob: pdf, name: pdf.name || '', addedAt: Date.now() });

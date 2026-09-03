@@ -1,12 +1,15 @@
-const VERSION = 'invoice-v6';
+const VERSION = 'invoice-v9';
 const SHELL = [
   './',
   './index.html',
   './css/style.css',
   './lib/dexie.min.js',
+  './lib/pdf.min.js',
+  './lib/pdf.worker.min.js',
   './js/app.js',
   './js/db.js',
   './js/models.js',
+  './js/pdfParse.js',
   './js/sentinels.js',
   './js/sync.js',
   './js/backup.js',

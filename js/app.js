@@ -2,7 +2,8 @@
 // 启动顺序：迁移/种子 → 每日快照 → 首屏渲染 → 云同步（先拉取后种子，避免多设备重复）
 
 import './tests/selftest.js';
-import { db } from './db.js';
+import { db, updateDocument } from './db.js';
+import { computeDueDate } from './models.js';
 import { seedIfEmpty } from './seed.js';
 import { maybeDailySnapshot } from './backup.js';
 import { bootSync, getSyncStatus, notifySyncState } from './sync.js';
@@ -95,6 +96,20 @@ window.addEventListener('docs-dedup', refresh);
 
 // ---------- 启动 ----------
 
+// 启动兜底：未付+已挂供应商+到期日为空的单据，按供应商默认付款天数补算
+// （覆盖"先建单、后设付款天数"的场景，如 PDF 识别建单时供应商还没有默认天数）
+async function backfillDueDates() {
+  const [docs, sups] = await Promise.all([db.documents.toArray(), db.suppliers.toArray()]);
+  const payOf = Object.fromEntries(sups.map(s => [s.id, s.defaultPayDays]));
+  let n = 0;
+  for (const d of docs) {
+    if (d.dueDate || d.payStatus === '已付' || !d.supplierId) continue;
+    const due = computeDueDate(d.docDate, payOf[d.supplierId]);
+    if (due) { await updateDocument(d.id, { dueDate: due }); n++; }
+  }
+  if (n) console.log(`[到期日] 已按供应商默认付款天数补算 ${n} 张单据`);
+}
+
 (async function boot() {
   // Service Worker：离线缓存（本地开发 file:// 或失败时静默跳过）
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
@@ -119,4 +134,7 @@ window.addEventListener('docs-dedup', refresh);
       refresh();
     }
   } catch (e) { console.warn('种子生成失败：', e); }
+  try {
+    await backfillDueDates();
+  } catch (e) { console.warn('到期日补算失败：', e); }
 })();

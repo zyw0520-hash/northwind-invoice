@@ -96,22 +96,20 @@ function openSupForm(sup, ctx) {
     if (isEdit) {
       const payDaysChanged = sup.defaultPayDays !== row.defaultPayDays;
       await updateSupplier(sup.id, row);
-      // 付款天数变更 → 按新天数重算该供应商未付单据的到期日（PDF/手填的明确到期日保留）
+      // 付款天数变更 → 按新天数重算该供应商所有未付单据的到期日（含 PDF 识别的明确日期，确认框提示）
       if (payDaysChanged && row.defaultPayDays > 0) {
         const openDocs = (await db.documents.where('supplierId').equals(sup.id).toArray())
           .filter(d => d.payStatus !== '已付');
-        const affected = openDocs.filter(d =>
-          !d.dueDate || d.dueDate === computeDueDate(d.docDate, sup.defaultPayDays));
-        if (affected.length) {
+        if (openDocs.length) {
           const ok = await dlgConfirm(
-            `默认付款天数已改为 ${row.defaultPayDays} 天。\n按新天数重算 ${sup.name} 名下 ${affected.length} 张未付单据的到期日？\n（PDF 或手填的明确到期日不受影响）`,
+            `默认付款天数已改为 ${row.defaultPayDays} 天。\n按新天数重算 ${sup.name} 名下 ${openDocs.length} 张未付单据的到期日？\n（将覆盖现有到期日，含 PDF 识别的明确日期）`,
             { okText: '重算' });
           if (ok) {
-            for (const d of affected) {
+            for (const d of openDocs) {
               const due = computeDueDate(d.docDate, row.defaultPayDays);
               if (due) await updateDocument(d.id, { dueDate: due });
             }
-            ctx.toast(`已重算 ${affected.length} 张单据的到期日`);
+            ctx.toast(`已重算 ${openDocs.length} 张单据的到期日`);
           }
         }
       }

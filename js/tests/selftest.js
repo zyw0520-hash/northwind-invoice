@@ -273,6 +273,30 @@ export function runSelftest() {
     eq(p.taxAmount, 7.7);
     eq(p.grossAmount, 107.7);
   });
+  t('parseInvoiceText Bezeichnung摘要 + Zahlungsziel天数', () => {
+    // 同行摘要 + Zahlungsziel 30 Tage → 日期推算
+    const p = parseInvoiceText([
+      'Hauptzollamt Hamburg',
+      'Rechnungsdatum: 05.09.2026',
+      'Bezeichnung: Zollgebuehr Import Anlage 08/2026',
+      'Zahlungsziel: 30 Tage netto',
+      'Gesamtbetrag: 250,00 EUR',
+    ].join('\n'));
+    eq(p.summary, 'Zollgebuehr Import Anlage 08/2026');
+    eq(p.dueDate, '2026-10-05');
+    // 摘要在下一行
+    const p2 = parseInvoiceText('Bezeichnung:\nParkhausgebuehr Flughafen\nRechnungsdatum: 01.09.2026');
+    eq(p2.summary, 'Parkhausgebuehr Flughafen');
+    // 表格列头不误抓为摘要；'zahlbar innerhalb' 兼容
+    const p3 = parseInvoiceText([
+      'Pos Bezeichnung Menge Einzelpreis Gesamt',
+      '1 Diesel 500 l 1,52 760,00',
+      'Rechnungsdatum: 20.08.2026',
+      'Zahlbar innerhalb von 14 Tagen ohne Abzug',
+    ].join('\n'));
+    eq(p3.summary, null);
+    eq(p3.dueDate, '2026-09-03');
+  });
 
   return results;
 }

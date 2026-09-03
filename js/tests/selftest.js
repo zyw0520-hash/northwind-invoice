@@ -287,15 +287,23 @@ export function runSelftest() {
     // 摘要在下一行
     const p2 = parseInvoiceText('Bezeichnung:\nParkhausgebuehr Flughafen\nRechnungsdatum: 01.09.2026');
     eq(p2.summary, 'Parkhausgebuehr Flughafen');
-    // 表格列头不误抓为摘要；'zahlbar innerhalb' 兼容
+    // 表格列头不误抓为摘要，但数据行货品描述兜底生效；'zahlbar innerhalb' 兼容
     const p3 = parseInvoiceText([
       'Pos Bezeichnung Menge Einzelpreis Gesamt',
       '1 Diesel 500 l 1,52 760,00',
       'Rechnungsdatum: 20.08.2026',
       'Zahlbar innerhalb von 14 Tagen ohne Abzug',
     ].join('\n'));
-    eq(p3.summary, null);
+    eq(p3.summary, 'Diesel');
     eq(p3.dueDate, '2026-09-03');
+  });
+  t('parseInvoiceText 摘要兜底（Miete标签 / 明细表数据行）', () => {
+    // Miete 标签行 → 'Miete August'
+    eq(parseInvoiceText('Firma XY\nMiete : August\nRechnungsdatum: 01.09.2026').summary, 'Miete August');
+    // Betreff → 取值本身
+    eq(parseInvoiceText('Betreff: Wartung Gebäude 2026\nRechnungsdatum: 01.09.2026').summary, 'Wartung Gebäude 2026');
+    // 明细表数据行 → 货号后描述，遇数字列停
+    eq(parseInvoiceText('Bezeichnung Menge Einheit Preis\nSW08 Schrankwand 2 500,00\nNettobetrag: 500,00').summary, 'Schrankwand');
   });
   t('parseInvoiceText Machulez版式（单据号行vom日期+表头数值行）', () => {
     const p = parseInvoiceText([
@@ -324,6 +332,7 @@ export function runSelftest() {
     eq(p.taxAmount, 17.1);
     eq(p.grossAmount, 107.1);
     eq(p.supplierName, 'Machulez Transport GmbH'); // 在 · 处截断地址
+    eq(p.summary, 'Miete August');         // 摘要兜底①：Miete 标签行
     eq(p.iban, 'DE56241500010000141838');
   });
 

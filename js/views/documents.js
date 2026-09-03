@@ -168,7 +168,7 @@ function openDocForm(doc, ctx) {
       <div class="fld full"><label>对方 IBAN</label>
         <input id="fld-iban" value="${escapeHtml(d.counterpartyIban || '')}"></div>
       <div class="fld full"><label>摘要</label>
-        <input id="fld-summary" value="${escapeHtml(d.summary || '')}" placeholder="买了什么 / 什么服务"></div>
+        <textarea id="fld-summary" rows="4" placeholder="买了什么 / 什么服务（AI 逐字翻译后填入）">${escapeHtml(d.summary || '')}</textarea></div>
       <div class="fld"><label>成本中心</label>
         <input id="fld-cost" value="${escapeHtml(d.costCenter || '')}"></div>
       <div class="fld"><label>存档位置</label>

@@ -1,10 +1,20 @@
-// AI 摘要（可选）：调用 GLM 大模型理解发票原文并生成一句中文摘要
+// AI 摘要（可选）：调用 GLM 大模型理解发票原文并生成详细中文翻译摘要
 // 隐私：仅发送脱敏后的文本到 open.bigmodel.cn；Key 只存本机 IndexedDB；未配置时静默跳过（用本地规则兜底）
 
 import { getSetting } from './db.js';
 
 const BASE = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
-const SYS = '你是应付会计助理。根据发票或单据原文（可能是德语/英语），用简体中文写一句不超过18个汉字的摘要，概括这笔业务是什么（例如：8月集装箱租赁费、场地租金8月、柴油采购、进口关税、供应商罚单）。只输出摘要本身，不要引号、句号或任何解释。';
+const SYS = `你是应付会计助理。请将发票/单据原文（德语或英语）逐字翻译成详细中文摘要，供会计入账使用。格式要求：
+1. 第一行：一句话概括业务类型（如"8月集装箱租赁费"）
+2. 后面逐条翻译所有明细行：货号、品名、数量、单价、金额
+3. 翻译付款条件、税率、其他重要信息
+4. 只输出翻译内容，不要加引号或解释性文字
+示例：
+8月集装箱租赁费
+L1003 可拆卸集装箱 3.0m³ 1.000个月 25.000 25.00
+L1501 可拆卸集装箱 7.0m³ 1.000个月 65.000 65.00
+净额90.00 19%增值税17.10 总额107.10
+付款条件：14天内付款有折扣（截至14.09.2026）`;
 
 export async function getAiConfig() {
   const c = await getSetting('aiConfig', {});
@@ -16,16 +26,16 @@ export function maskSensitive(text) {
   return String(text || '')
     .replace(/\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b/g, '[IBAN]')
     .replace(/((?:SWIFT-)?BIC\s*[:#]?\s*)[A-Z0-9]{8,11}/gi, '$1[BIC]')
-    .replace(/\b\d{5,}\b/g, '[数字]');
+    .replace(/\d{5,}/g, '[数字]');
 }
 
 // 生成摘要：未配置 Key 或任何失败均返回 null（调用方保持本地兜底结果）
 export async function aiSummary(rawText) {
   const cfg = await getAiConfig();
   if (!cfg.key) return null;
-  const text = maskSensitive(rawText).slice(0, 3500);
+  const text = maskSensitive(rawText).slice(0, 5000);
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 20000);
+  const timer = setTimeout(() => ctrl.abort(), 30000);
   try {
     const res = await fetch(BASE, {
       method: 'POST',
@@ -44,7 +54,7 @@ export async function aiSummary(rawText) {
     const data = JSON.parse(await res.text());
     const s = String(data.choices?.[0]?.message?.content || '').trim()
       .replace(/^[「"'\s]+|[。」"'\s]+$/g, '');
-    return s ? s.slice(0, 40) : null;
+    return s ? s.slice(0, 800) : null;
   } catch {
     return null;
   } finally {

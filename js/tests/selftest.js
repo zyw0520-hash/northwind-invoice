@@ -297,6 +297,35 @@ export function runSelftest() {
     eq(p3.summary, null);
     eq(p3.dueDate, '2026-09-03');
   });
+  t('parseInvoiceText Machulez版式（单据号行vom日期+表头数值行）', () => {
+    const p = parseInvoiceText([
+      'Baumineralien',
+      'Recyclingbaustoffe',
+      'Machulez Transport GmbH · Neue Industriestraße 5 · 27472 Cuxhaven',
+      'NORTHWIND GmbH Internet: www.machulez.de',
+      'Telefon: 04721 7444-44',
+      'Rechnung-Nr.: AR2621327 vom 31.08.2026',
+      'Kunden-Nr. : 23441 Sachbearbeiter : Fabian Schildt',
+      'Miete : August',
+      'Artikel Nr. Bezeichnung / Text Menge Einheit E-Preis Betrag /EUR',
+      'L1003 Absetzcontainer 3,0 m³ 1,000 Monat 25,000 25,00',
+      'Nettobetrag MwSt. % MwSt.-Betrag Endbetrag /EUR',
+      '90,00 19 % 17,10 107,10',
+      'Zahlbar: 14 Tage netto Kasse (bis 14.09.2026) ohne Abzug',
+      'IBAN: DE56241500010000141838',
+      'SWIFT-BIC: BRLADE21CUX',
+      'Ust-ID: DE115170857',
+    ].join('\n'));
+    eq(p.docNumber, 'AR2621327');
+    eq(p.docDate, '2026-08-31');           // 单据号行 'vom 31.08.2026'
+    eq(p.dueDate, '2026-09-14');           // Zahlbar (bis 14.09.2026)
+    eq(p.netAmount, 90);                   // 表头行+数值行布局
+    eq(p.taxRate, 0.19);
+    eq(p.taxAmount, 17.1);
+    eq(p.grossAmount, 107.1);
+    eq(p.supplierName, 'Machulez Transport GmbH'); // 在 · 处截断地址
+    eq(p.iban, 'DE56241500010000141838');
+  });
 
   return results;
 }

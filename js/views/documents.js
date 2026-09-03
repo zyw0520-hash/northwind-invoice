@@ -6,6 +6,7 @@ import { findDuplicate, amountMismatch, dueClass } from '../sentinels.js';
 import { exportDocumentsCsv } from '../csv.js';
 import { extractPdfText, parseInvoiceText, inferDocType } from '../pdfParse.js';
 import { dlgConfirm } from '../dialog.js';
+import { aiSummary } from '../ai.js';
 
 const DOC_TYPES = ['发票', '送货单', '贷项通知单', '关税通知', '罚单', '租车费', '其他'];
 const PAY_STATUSES = ['未付', '已付', '部分付', '待确认', '争议中', '催缴中'];
@@ -236,6 +237,7 @@ function openDocForm(doc, ctx) {
   zone.ondragleave = () => zone.classList.remove('drag');
   zone.ondrop = e => { e.preventDefault(); zone.classList.remove('drag'); pickPdf(e.dataTransfer.files[0]); };
   $('fld-pdf').onchange = e => pickPdf(e.target.files[0]);
+  $('fld-summary').addEventListener('input', e => { e.target.dataset.touched = '1'; }); // 用户手改过摘要则 AI 不覆盖
   function pickPdf(file) {
     if (!file) return;
     if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
@@ -314,6 +316,14 @@ function openDocForm(doc, ctx) {
     $('pdf-info').textContent = filled.length
       ? base + `✅ 已识别并填充：${filled.join('、')} —— 识别结果仅供参考，请核对`
       : base + '⚠ 未识别出可填充的字段（可能是扫描版 PDF），请手动填写';
+
+    // AI 摘要（可选）：后台生成，若用户未手改摘要框则覆盖本地兜底
+    aiSummary(text).then(s => {
+      if (!s || $('fld-summary').dataset.touched) return;
+      $('fld-summary').value = s;
+      filled.push('AI摘要');
+      $('pdf-info').textContent = base + `✅ 已识别并填充：${filled.join('、')}（🤖 AI已理解发票内容）—— 请核对`;
+    }).catch(() => {});
   }
   if (isEdit) {
     db.pdfFiles.get(doc.id).then(rec => {

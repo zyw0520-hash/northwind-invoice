@@ -5,10 +5,12 @@ import { getSyncConfig, getSyncStatus, syncNow, notifySyncState } from '../sync.
 import { exportJson, importJson, exportSnapshot, restoreSnapshot, takeSnapshot } from '../backup.js';
 import { dlgConfirm, dlgAlert } from '../dialog.js';
 import { runSelftest } from '../tests/selftest.js';
+import { getAiConfig, aiTest } from '../ai.js';
 
 export async function render(el, ctx) {
   const cfg = await getSyncConfig();
   const st = await getSyncStatus();
+  const aiCfg = await getAiConfig();
   const snaps = (await db.snapshots.toArray()).sort((a, b) => b.id - a.id);
   const th = await getThresholds();
 
@@ -26,6 +28,20 @@ export async function render(el, ctx) {
         <button class="btn primary" id="btn-save-sync">保存配置</button>
         <button class="btn" id="btn-sync-now" ${st.configured ? '' : 'disabled'}>立即同步</button>
         ${st.configured ? `<span class="m-hint">${st.lastError ? `🔴 上次同步失败：${escapeHtml(st.lastError)}` : st.lastSyncAt ? `🟢 上次同步 ${new Date(st.lastSyncAt).toLocaleString('zh-CN')}` : '已配置，尚未同步'}</span>` : ''}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>AI 摘要（可选）</h2>
+      <div class="m-hint" style="margin-bottom:10px">配置后拖入 PDF 会调用大模型理解发票内容（德语/英语）并生成中文摘要。发票文字会脱敏银行信息后发送到智谱服务器（open.bigmodel.cn），Key 只存本机浏览器；不配置则用本地关键词识别，功能不受影响。免费模型 glm-4-flash：注册后点右上角头像 →「API Keys」新建复制即可。</div>
+      <div class="form-grid">
+        <div class="fld"><label>API Key（智谱 GLM）</label><input id="ai-key" value="${escapeHtml(aiCfg.key)}" placeholder="粘贴 open.bigmodel.cn 的 API Key，留空=关闭"></div>
+        <div class="fld"><label>模型</label><input id="ai-model" value="${escapeHtml(aiCfg.model)}" placeholder="glm-4-flash（免费）"></div>
+      </div>
+      <div class="m-btns" style="justify-content:flex-start">
+        <button class="btn primary" id="btn-save-ai">保存配置</button>
+        <button class="btn" id="btn-test-ai">测试连接</button>
+        <span class="m-hint" id="ai-result"></span>
       </div>
     </div>
 
@@ -99,6 +115,19 @@ export async function render(el, ctx) {
     } catch (e) {
       await dlgAlert('同步失败：' + e.message);
     }
+  };
+
+  $('btn-save-ai').onclick = async () => {
+    const key = $('ai-key').value.trim();
+    const model = $('ai-model').value.trim() || 'glm-4-flash';
+    await setSetting('aiConfig', { key, model });
+    ctx.toast(key ? 'AI 摘要已启用' : '已保存（Key 为空 = 关闭 AI 摘要）');
+  };
+  $('btn-test-ai').onclick = async () => {
+    const key = $('ai-key').value.trim();
+    if (!key) { $('ai-result').textContent = '请先填 API Key'; return; }
+    $('ai-result').textContent = '测试中…';
+    $('ai-result').textContent = await aiTest(key, $('ai-model').value.trim());
   };
 
   $('btn-save-th').onclick = async () => {

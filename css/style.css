@@ -208,6 +208,7 @@ table.tbl { width: 100%; border-collapse: collapse; background: var(--card); }
 .fld input, .fld select, .fld textarea {
   padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff;
 }
+.fld textarea { width: 100%; resize: vertical; font-family: inherit; line-height: 1.5; }
 .fld input:focus, .fld select:focus, .fld textarea:focus { outline: none; border-color: var(--blue); }
 .fld .auto-fill { border-color: var(--blue); background: var(--blue-weak); }
 .m-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }

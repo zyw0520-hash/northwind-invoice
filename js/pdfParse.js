@@ -228,6 +228,40 @@ export function parseInvoiceText(text) {
     }
   }
 
+  // 摘要兜底①：Miete/Betreff/Grund/Verwendungszweck 标签行（如 'Miete : August' → 'Miete August'）
+  if (!res.summary) {
+    for (const ln of lines) {
+      const m = ln.match(/\b(betreff|verwendungszweck|grund|miete)\s*[:#]\s*(.{2,80})/i);
+      if (!m) continue;
+      const v = m[2].trim();
+      if (/[A-Za-zäöüÄÖÜ]{3}/.test(v) && !/^(datum|nr\b|seite)/i.test(v)) {
+        res.summary = /^(betreff|verwendungszweck)$/i.test(m[1]) ? v : `${m[1]} ${v}`;
+        break;
+      }
+    }
+  }
+
+  // 摘要兜底②：明细表第一行数据的货品描述（表头含 Bezeichnung+Menge 列，数据行含金额）
+  if (!res.summary) {
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (!/\bbezeichnung\b/i.test(lines[i]) || !/(menge|einzelpreis|betrag)/i.test(lines[i])) continue;
+      for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
+        const row = lines[j];
+        if (!amountCandidates(row).length) continue;
+        const toks = row.split(' ');
+        let start = /^[A-Za-z]{0,4}\d/.test(toks[0] || '') ? 1 : 0; // 跳过货号（L1003 / A1 / 1）
+        const words = [];
+        for (let k = start; k < toks.length && words.length < 3; k++) {
+          if (!/[A-Za-z]{2}/.test(toks[k]) || /^\d+[.,]\d+$/.test(toks[k])) break; // 遇数字列停
+          words.push(toks[k]);
+        }
+        if (words.join(' ').length >= 4) res.summary = words.join(' ');
+        break;
+      }
+      break;
+    }
+  }
+
   // 供应商名（前 15 行）
   res.supplierName = guessSupplierName(lines);
 

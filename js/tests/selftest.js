@@ -335,6 +335,12 @@ export function runSelftest() {
     eq(p.summary, 'Miete August');         // 摘要兜底①：Miete 标签行
     eq(p.iban, 'DE56241500010000141838');
   });
+  t('ai.js maskSensitive 发送前脱敏', async () => {
+    const { maskSensitive } = await import('../ai.js');
+    eq(maskSensitive('IBAN: DE56241500010000141838'), 'IBAN: [IBAN]');
+    eq(maskSensitive('SWIFT-BIC: BRLADE21CUX'), 'SWIFT-BIC: [BIC]');
+    ok(!/\d{5}/.test(maskSensitive('Tel 04721 7444-44 HRB 110163 USt DE115170857')));
+  });
 
   return results;
 }

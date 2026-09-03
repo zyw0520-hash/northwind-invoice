@@ -1,6 +1,7 @@
 // 供应商视图：标准名/别名/默认付款条件管理（别名用于快速匹配与将来同步去重）
 
-import { db, addSupplier, updateSupplier, deleteSupplier } from '../db.js';
+import { db, addSupplier, updateSupplier, deleteSupplier, updateDocument } from '../db.js';
+import { computeDueDate } from '../models.js';
 import { dlgConfirm } from '../dialog.js';
 
 export async function render(el, ctx) {
@@ -92,10 +93,33 @@ function openSupForm(sup, ctx) {
       defaultPayDays: Math.max(0, Number($('fld-paydays').value) || 0),
       note: $('fld-note').value.trim(),
     };
-    if (isEdit) await updateSupplier(sup.id, row);
-    else await addSupplier(row);
+    if (isEdit) {
+      const payDaysChanged = sup.defaultPayDays !== row.defaultPayDays;
+      await updateSupplier(sup.id, row);
+      // 付款天数变更 → 按新天数重算该供应商未付单据的到期日（PDF/手填的明确到期日保留）
+      if (payDaysChanged && row.defaultPayDays > 0) {
+        const openDocs = (await db.documents.where('supplierId').equals(sup.id).toArray())
+          .filter(d => d.payStatus !== '已付');
+        const affected = openDocs.filter(d =>
+          !d.dueDate || d.dueDate === computeDueDate(d.docDate, sup.defaultPayDays));
+        if (affected.length) {
+          const ok = await dlgConfirm(
+            `默认付款天数已改为 ${row.defaultPayDays} 天。\n按新天数重算 ${sup.name} 名下 ${affected.length} 张未付单据的到期日？\n（PDF 或手填的明确到期日不受影响）`,
+            { okText: '重算' });
+          if (ok) {
+            for (const d of affected) {
+              const due = computeDueDate(d.docDate, row.defaultPayDays);
+              if (due) await updateDocument(d.id, { dueDate: due });
+            }
+            ctx.toast(`已重算 ${affected.length} 张单据的到期日`);
+          }
+        }
+      }
+    } else {
+      await addSupplier(row);
+    }
     close();
-    ctx.toast('已保存');
+    ctx.toast(isEdit ? '已保存' : '已新增');
   };
 }
 

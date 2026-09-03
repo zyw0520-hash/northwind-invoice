@@ -296,6 +296,7 @@ function openDocForm(doc, ctx) {
     fill('fld-gross', '总额', parsed.grossAmount);
     fill('fld-iban', 'IBAN', parsed.iban);
     fill('fld-cost', '成本中心', parsed.costCenter);
+    fill('fld-summary', '摘要', parsed.summary);
     fill('fld-archive', '存档位置', file.name);
 
     // 税率：仅 19% / 7% / 0% 三档可自动填

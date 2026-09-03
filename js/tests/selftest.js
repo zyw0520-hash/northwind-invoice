@@ -9,6 +9,7 @@ import { needsDailySnapshot, pruneSnapshots, SNAP_KEEP } from '../backup.js';
 import { pickKeep } from '../db.js';
 import { csvEscape } from '../csv.js';
 import { parseDeDate, parseInvoiceText, inferDocType } from '../pdfParse.js';
+import { maskSensitive } from '../ai.js';
 
 export function runSelftest() {
   const results = [];
@@ -22,6 +23,7 @@ export function runSelftest() {
       throw new Error(`期望 ${JSON.stringify(expected)}，实际 ${JSON.stringify(actual)} ${msg}`);
     }
   }
+  function ok(cond, msg = '') { if (!cond) throw new Error('期望 true ' + msg); }
   const T = '2026-09-01'; // 固定"今天"，测试可复现
 
   // ---------- models ----------
@@ -335,8 +337,7 @@ export function runSelftest() {
     eq(p.summary, 'Miete August');         // 摘要兜底①：Miete 标签行
     eq(p.iban, 'DE56241500010000141838');
   });
-  t('ai.js maskSensitive 发送前脱敏', async () => {
-    const { maskSensitive } = await import('../ai.js');
+  t('ai.js maskSensitive 发送前脱敏', () => {
     eq(maskSensitive('IBAN: DE56241500010000141838'), 'IBAN: [IBAN]');
     eq(maskSensitive('SWIFT-BIC: BRLADE21CUX'), 'SWIFT-BIC: [BIC]');
     ok(!/\d{5}/.test(maskSensitive('Tel 04721 7444-44 HRB 110163 USt DE115170857')));

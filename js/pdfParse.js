@@ -109,7 +109,7 @@ function parseDeNumberDe(s) {
 }
 
 const GROSS_LABELS = [
-  /gesamtbetrag/i, /rechnungsbetrag/i, /gesamtsumme/i, /bruttobetrag/i,
+  /gesamtbetrag/i, /rechnungsbetrag/i, /gesamtsumme/i, /bruttobetrag/i, /endbetrag/i,
   /zahlbetrag/i, /f[aä]lliger?\s+betrag/i, /brutto/i, /grand\s+total/i, /total\b/i, /\bsumme\b/i,
 ];
 const NET_LABELS = [
@@ -126,12 +126,12 @@ function guessSupplierName(lines) {
   const head = lines.slice(0, 15).map(l => l.trim()).filter(l => l.length >= 4 && l.length <= 70);
   for (const l of head) {
     if (SUP_BAD.test(l)) continue;
-    if (SUP_SUFFIX.test(l) && /[A-Za-z]{3}/.test(l)) return l.replace(/[\s\-.,;:]+$/, '');
+    if (SUP_SUFFIX.test(l) && /[A-Za-z]{3}/.test(l)) return l.split(/\s*[·|]\s*/)[0].replace(/[\s\-.,;:]+$/, '');
   }
   for (const l of head) {
     if (SUP_BAD.test(l)) continue;
     if (/^[\d\s.,\-\/()#+*]+$/.test(l)) continue;
-    if (/[A-Za-z]{3}/.test(l) && /\s/.test(l)) return l.replace(/[\s\-.,;:]+$/, '');
+    if (/[A-Za-z]{3}/.test(l) && /\s/.test(l)) return l.split(/\s*[·|]\s*/)[0].replace(/[\s\-.,;:]+$/, '');
   }
   return null;
 }
@@ -162,10 +162,20 @@ export function parseInvoiceText(text) {
   for (let i = 0; i < lines.length; i++) {
     const ln = lines[i];
 
-    // 单据号
+    // 单据号（兼容 Rechnung-Nr. / Rechnungs-Nr. / Rechnungsnummer）
     if (!res.docNumber) {
-      const m = ln.match(/(?:rechnungs\s*-?\s*(?:nummer|nr\.?)|lieferschein\s*-?\s*(?:nummer|nr\.?)|beleg\s*-?\s*(?:nummer|nr\.?)|invoice\s*(?:no\.?|number|#))\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9\/\-.]{1,29})/i);
-      if (m && !NUM_STOP.test(m[1]) && !DATE_TOKEN.test(m[1])) res.docNumber = m[1];
+      const m = ln.match(/(?:rechnungs?\s*-?\s*(?:nummer|nr\.?)|lieferschein\s*-?\s*(?:nummer|nr\.?)|beleg\s*-?\s*(?:nummer|nr\.?)|invoice\s*(?:no\.?|number|#))\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9\/\-.]{1,29})/i);
+      if (m && !NUM_STOP.test(m[1]) && !DATE_TOKEN.test(m[1])) {
+        res.docNumber = m[1];
+        // 'Rechnung-Nr.: AR123 vom 31.08.2026'：日期跟在单据号后（无独立 Rechnungsdatum 行）
+        if (!res.docDate) {
+          const dm = ln.slice(m.index + m[0].length).match(/\bvom\s+(.{0,20})/i);
+          if (dm) {
+            const d = dm[1].match(DATE_TOKEN);
+            if (d) res.docDate = parseDeDate(d[1]);
+          }
+        }
+      }
     }
 
     // 单据日期
@@ -221,9 +231,30 @@ export function parseInvoiceText(text) {
   // 供应商名（前 15 行）
   res.supplierName = guessSupplierName(lines);
 
-  // 总额 / 净额（按标签优先级逐行扫描）
-  res.grossAmount = amountAfterLabel(lines, GROSS_LABELS, /netto/i);
-  res.netAmount = amountAfterLabel(lines, NET_LABELS, /(mwst|umsatzsteuer|\bust\b|\bvat\b|brutto|gesam)/i);
+  // 表头行+数值行布局（Machulez 风格）：
+  // 'Nettobetrag MwSt. % MwSt.-Betrag Endbetrag /EUR' + '90,00 19 % 17,10 107,10'
+  for (let i = 0; i < lines.length - 1; i++) {
+    const ln = lines[i];
+    if (!/(nettobetrag|\bnetto\b|zwischensumme)/i.test(ln) || !/(mwst|ust)/i.test(ln)) continue;
+    if (amountCandidates(ln).length) continue; // 标签行不应含金额
+    const vals = lines[i + 1];
+    const cands = amountCandidates(vals).map(parseDeNumberDe).filter(n => n != null);
+    const pm = vals.match(/(\d{1,2}(?:[.,]\d{1,2})?)\s*%/);
+    if (cands.length < 3 || !pm) continue;
+    const rate = parseDeNumberDe(pm[1].replace('.', ','));
+    if (rate == null || rate <= 0 || rate > 30) continue;
+    const net = cands[0], gross = cands[cands.length - 1];
+    const taxCands = amountCandidates(vals.slice(vals.indexOf(pm[0]) + pm[0].length)).map(parseDeNumberDe).filter(n => n != null);
+    const tax = taxCands[0] != null ? taxCands[0] : round2(gross - net);
+    if (Math.abs(round2(net + tax) - gross) < 0.02) {
+      res.netAmount = net; res.taxRate = rate / 100; res.taxAmount = tax; res.grossAmount = gross;
+    }
+    break;
+  }
+
+  // 总额 / 净额（按标签优先级逐行扫描；表头行布局已识别的字段不覆盖）
+  if (res.grossAmount == null) res.grossAmount = amountAfterLabel(lines, GROSS_LABELS, /netto/i);
+  if (res.netAmount == null) res.netAmount = amountAfterLabel(lines, NET_LABELS, /(mwst|umsatzsteuer|\bust\b|\bvat\b|brutto|gesam)/i);
 
   // 税率 + 税额：找含 % 的税行；已知净额时优先取 ≈ 净额×税率 的金额
   for (const ln of lines) {

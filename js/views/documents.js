@@ -227,6 +227,7 @@ function openDocForm(doc, ctx) {
   };
   $('fld-supplier').onchange = maybeDue;
   $('fld-date').onchange = maybeDue;
+  maybeDue(); // 打开表单时：已有供应商默认天数且到期日为空 → 自动补算（如先挂供应商后补付款天数的场景）
 
   // PDF 选择
   const zone = $('pdf-zone');
@@ -354,6 +355,13 @@ function openDocForm(doc, ctx) {
         relatedLeadId: $('fld-relatedLead').value || null,
         note: $('fld-note').value.trim(),
       };
+
+      // 到期日兜底：留空且供应商有默认付款天数 → 按单据日期自动补算（如 PDF 没写 Fällig、后来才挂供应商）
+      if (!row.dueDate && row.supplierId) {
+        const sup = cache.suppliers.find(s => s.id === row.supplierId);
+        const due = computeDueDate(row.docDate, sup?.defaultPayDays);
+        if (due) { row.dueDate = due; $('fld-due').value = due; }
+      }
 
       // 重复拦截：同供应商 + 同单据号
       const all = await db.documents.toArray();

@@ -1,4 +1,4 @@
-// 轻量断言自测：models / sentinels / sync / backup / db / csv 纯函数
+// 轻量断言自测：models / sentinels / sync / backup / db / csv / pdfParse 纯函数
 // 模块导入时自动执行并 console.log；设置页可重新运行（runSelftest）
 // 浏览器控制台：import('./js/tests/selftest.js').then(m => m.runSelftest())
 
@@ -8,6 +8,7 @@ import { parseUid, remoteWins, tombstoneWins } from '../sync.js';
 import { needsDailySnapshot, pruneSnapshots, SNAP_KEEP } from '../backup.js';
 import { pickKeep } from '../db.js';
 import { csvEscape } from '../csv.js';
+import { parseDeDate, parseInvoiceText, inferDocType } from '../pdfParse.js';
 
 export function runSelftest() {
   const results = [];
@@ -200,6 +201,77 @@ export function runSelftest() {
     eq(csvEscape('say "hi"'), '"say ""hi"""');
     eq(csvEscape('l1\nl2'), '"l1\nl2"');
     eq(csvEscape(null), '');
+  });
+
+  // ---------- pdfParse ----------
+  t('parseDeDate 德式/ISO/两位年', () => {
+    eq(parseDeDate('21.08.2026'), '2026-08-21');
+    eq(parseDeDate('2026-08-21'), '2026-08-21');
+    eq(parseDeDate('3.9.26'), '2026-09-03');
+    eq(parseDeDate('31.12.99'), '2099-12-31');
+    eq(parseDeDate(''), null);
+    eq(parseDeDate('13.13.2026'), null);
+  });
+  t('parseInvoiceText 标准德语发票', () => {
+    const text = [
+      'Raiffeisen Weser-Elbe eG',
+      'Am Markt 1',
+      '27404 Zeven',
+      '',
+      'Rechnungsnummer: 2026-08147',
+      'Rechnungsdatum: 21.08.2026',
+      'Faellig am: 20.09.2026',
+      '',
+      'Pos Beschreibung Menge Preis Gesamt',
+      '1 Diesel 500 l 1,52 760,00',
+      '',
+      'Nettobetrag: 760,00 EUR',
+      'Umsatzsteuer 19 % : 144,40 EUR',
+      'Gesamtbetrag: 904,40 EUR',
+      '',
+      'IBAN: DE21 2405 0115 0001 2345 67',
+      'Kostenstelle: WH-12',
+    ].join('\n');
+    const p = parseInvoiceText(text);
+    eq(p.supplierName, 'Raiffeisen Weser-Elbe eG');
+    eq(p.docNumber, '2026-08147');
+    eq(p.docDate, '2026-08-21');
+    eq(p.dueDate, '2026-09-20');
+    eq(p.netAmount, 760);
+    eq(p.taxRate, 0.19);
+    eq(p.taxAmount, 144.4);
+    eq(p.grossAmount, 904.4);
+    eq(p.iban, 'DE21240501150001234567');
+    eq(p.costCenter, 'WH-12');
+    eq(inferDocType(text, p.docNumber), null);
+  });
+  t('parseInvoiceText 交叉推算与类型推断', () => {
+    // 只有 Netto/MwSt 行、无 Gesamtbetrag → 总额由净额+税额推算
+    const text = [
+      'KHT Industriepartner GmbH',
+      'Rechnungs-Nr. RE26/0565-HB',
+      'Datum, 31.08.2026',
+      'Zwischensumme: 9.075,00',
+      'MwSt. 19,00 % 1.724,25',
+      'Zahlbar innerhalb von 14 Tagen.',
+    ].join('\n');
+    const p = parseInvoiceText(text);
+    eq(p.docNumber, 'RE26/0565-HB');
+    eq(p.docDate, '2026-08-31');
+    eq(p.dueDate, '2026-09-14');
+    eq(p.netAmount, 9075);
+    eq(p.taxRate, 0.19);
+    eq(p.taxAmount, 1724.25);
+    eq(p.grossAmount, 10799.25);
+    eq(inferDocType('Lieferschein-Nr. L22618967\nDatum 20.08.2026', null), '送货单');
+    eq(inferDocType('Rechnung mit Gutschrift-Hinweis', 'R1'), '贷项通知单');
+  });
+  t('parseInvoiceText 百分比不混入金额', () => {
+    const p = parseInvoiceText('Netto 100,00\nUSt 7,70 % 7,70\nGesamtbetrag 107,70');
+    eq(p.netAmount, 100);
+    eq(p.taxRate, 0.077);
+    eq(p.taxAmount, 7.7);
+    eq(p.grossAmount, 107.7);
   });
 
   return results;

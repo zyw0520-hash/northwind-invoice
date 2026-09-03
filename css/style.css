@@ -221,6 +221,7 @@ table.tbl { width: 100%; border-collapse: collapse; background: var(--card); }
 }
 .pdf-zone.drag { border-color: var(--blue); background: var(--blue-weak); }
 .pdf-file { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+#pdf-info { white-space: pre-line; margin-top: 6px; }
 
 /* ---------- 对话框（自绘，替代原生弹窗） ---------- */
 #dlg-overlay {

@@ -150,7 +150,7 @@ function openDocForm(doc, ctx) {
         <input id="fld-date" type="date" value="${d.docDate || ''}"></div>
       <div class="fld"><label>净额 EUR <span class="de">Netto</span></label>
         <input id="fld-net" type="number" step="0.01" value="${d.netAmount ?? ''}"></div>
-      <div class="fld"><label>税率</label>
+      <div class="fld"><label>税率 <span id="rate-hint" hidden style="color:#d97706">⚠ 选税率后自动拆算净额/税金</span></label>
         <select id="fld-rate">${TAX_RATES.map(([v, t]) =>
           `<option value="${v}" ${String(d.taxRate ?? '') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
       <div class="fld"><label>税额 EUR <span class="de">MwSt./USt.</span></label>
@@ -213,9 +213,25 @@ function openDocForm(doc, ctx) {
       $('fld-gross').value = a.grossAmount ?? '';
     }
   };
-  $('fld-net').oninput = () => { lastEdited = 'net'; recalc(); };
-  $('fld-rate').onchange = () => { lastEdited = 'net'; recalc(); };
-  $('fld-gross').oninput = () => { lastEdited = 'gross'; recalc(); };
+  // 税率提醒：填了金额但没选税率时提示
+  const updateRateHint = () => {
+    const hasAmt = $('fld-net').value !== '' || $('fld-gross').value !== '';
+    $('rate-hint').hidden = !hasAmt || $('fld-rate').value !== '';
+  };
+  $('fld-net').oninput = () => { lastEdited = 'net'; recalc(); updateRateHint(); };
+  $('fld-rate').onchange = () => {
+    updateRateHint();
+    // 已有总额但净额为空：按所选税率从含税总额拆算净额+税额
+    if ($('fld-net').value === '' && $('fld-gross').value !== '' && $('fld-rate').value !== '') {
+      const sp = splitGross(Number($('fld-gross').value), Number($('fld-rate').value));
+      if (sp) { $('fld-net').value = sp.netAmount; $('fld-tax').value = sp.taxAmount; }
+      lastEdited = 'gross';
+      return;
+    }
+    lastEdited = 'net';
+    recalc();
+  };
+  $('fld-gross').oninput = () => { lastEdited = 'gross'; recalc(); updateRateHint(); };
 
   // 到期日自动推算：改供应商或日期且到期日为空时
   const maybeDue = () => {
@@ -229,6 +245,7 @@ function openDocForm(doc, ctx) {
   $('fld-supplier').onchange = maybeDue;
   $('fld-date').onchange = maybeDue;
   maybeDue(); // 打开表单时：已有供应商默认天数且到期日为空 → 自动补算（如先挂供应商后补付款天数的场景）
+  updateRateHint(); // 打开表单时：已有金额但没选税率 → 显示提醒
 
   // PDF 选择
   const zone = $('pdf-zone');
@@ -311,6 +328,7 @@ function openDocForm(doc, ctx) {
     // 只有净额+税率时联动出税额/总额；供应商变化联动推算到期日
     if ($('fld-net').value && !$('fld-gross').value) { lastEdited = 'net'; recalc(); }
     if ($('fld-supplier').value) $('fld-supplier').dispatchEvent(new Event('change'));
+    updateRateHint(); // PDF 填了总额但没识别出税率 → 显示提醒
 
     const base = `已选择：${file.name}（${(file.size / 1024).toFixed(0)} KB）\n`;
     $('pdf-info').textContent = filled.length

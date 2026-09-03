@@ -1,9 +1,10 @@
 // 单据台账视图：筛选、表格、新建/编辑表单（含重复检测、金额差异提示、PDF 附件）
 
-import { db, addDocument, updateDocument, deleteDocument, getDocuments } from '../db.js';
-import { computeAmounts, splitGross, computeDueDate, fmtEur, todayStr } from '../models.js';
+import { db, addDocument, updateDocument, deleteDocument, getDocuments, addSupplier } from '../db.js';
+import { computeAmounts, splitGross, computeDueDate, fmtEur, todayStr, findSupplierByName } from '../models.js';
 import { findDuplicate, amountMismatch, dueClass } from '../sentinels.js';
 import { exportDocumentsCsv } from '../csv.js';
+import { extractPdfText, parseInvoiceText, inferDocType } from '../pdfParse.js';
 import { dlgConfirm } from '../dialog.js';
 
 const DOC_TYPES = ['发票', '送货单', '贷项通知单', '关税通知', '罚单', '租车费', '其他'];
@@ -240,7 +241,77 @@ function openDocForm(doc, ctx) {
       showErr('只能上传 PDF 文件'); return;
     }
     pdfFile = file;
-    $('pdf-info').textContent = `已选择：${file.name}（${(file.size / 1024).toFixed(0)} KB）`;
+    $('pdf-info').textContent = `已选择：${file.name}（${(file.size / 1024).toFixed(0)} KB）· 识别中…`;
+    recognizePdf(file).catch(e => {
+      $('pdf-info').textContent = `已选择：${file.name}（${(file.size / 1024).toFixed(0)} KB）· 自动识别失败：${e.message}，可手动填写`;
+    });
+  }
+
+  // PDF → 提取文本 → 解析字段 → 填充空表单项；新供应商自动入列表
+  async function recognizePdf(file) {
+    const text = await extractPdfText(file);
+    const parsed = parseInvoiceText(text);
+    const filled = [];
+
+    // 类型（仅新建且未改过默认值时按关键词切换）
+    const pType = inferDocType(text, parsed.docNumber);
+    if (!isEdit && pType && $('fld-type').value === '发票' && pType !== '发票') {
+      $('fld-type').value = pType;
+      filled.push('类型→' + pType);
+    }
+
+    // 供应商：先按名称/别名匹配已有，未匹配则自动新增
+    if (parsed.supplierName) {
+      const exist = findSupplierByName(cache.suppliers, parsed.supplierName);
+      if (exist) {
+        if (!$('fld-supplier').value) { $('fld-supplier').value = exist.id; filled.push('供应商 ' + exist.name); }
+      } else {
+        const newId = await addSupplier({
+          name: parsed.supplierName, aliases: [], defaultPayDays: null,
+          note: 'PDF 识别自动新增（请补充别名/付款天数）',
+        });
+        cache.suppliers = await db.suppliers.toArray();
+        cache.nameOf = Object.fromEntries(cache.suppliers.map(s => [s.id, s.name]));
+        const sel = $('fld-supplier');
+        const cur = sel.value;
+        sel.innerHTML = `<option value="">— 未指定 —</option>` + cache.suppliers.map(s =>
+          `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+        if (cur) sel.value = cur;
+        sel.value = newId;
+        filled.push(`供应商 ${parsed.supplierName}（已自动新增）`);
+      }
+    }
+
+    const fill = (id, label, v, { overrideToday = false } = {}) => {
+      if (v == null || v === '') return;
+      const el = $(id);
+      const empty = !el.value || (overrideToday && el.value === ctx.today && !isEdit);
+      if (empty) { el.value = v; filled.push(label); }
+    };
+    fill('fld-number', '单据号', parsed.docNumber);
+    fill('fld-date', '日期', parsed.docDate, { overrideToday: true });
+    fill('fld-due', '到期日', parsed.dueDate);
+    fill('fld-net', '净额', parsed.netAmount);
+    fill('fld-tax', '税额', parsed.taxAmount);
+    fill('fld-gross', '总额', parsed.grossAmount);
+    fill('fld-iban', 'IBAN', parsed.iban);
+    fill('fld-cost', '成本中心', parsed.costCenter);
+    fill('fld-archive', '存档位置', file.name);
+
+    // 税率：仅 19% / 7% / 0% 三档可自动填
+    if (parsed.taxRate != null && !$('fld-rate').value) {
+      const opt = TAX_RATES.find(([v]) => Number(v) === parsed.taxRate);
+      if (opt) { $('fld-rate').value = opt[0]; filled.push('税率'); }
+    }
+
+    // 只有净额+税率时联动出税额/总额；供应商变化联动推算到期日
+    if ($('fld-net').value && !$('fld-gross').value) { lastEdited = 'net'; recalc(); }
+    if ($('fld-supplier').value) $('fld-supplier').dispatchEvent(new Event('change'));
+
+    const base = `已选择：${file.name}（${(file.size / 1024).toFixed(0)} KB）\n`;
+    $('pdf-info').textContent = filled.length
+      ? base + `✅ 已识别并填充：${filled.join('、')} —— 识别结果仅供参考，请核对`
+      : base + '⚠ 未识别出可填充的字段（可能是扫描版 PDF），请手动填写';
   }
   if (isEdit) {
     db.pdfFiles.get(doc.id).then(rec => {

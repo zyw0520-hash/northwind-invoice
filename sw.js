@@ -1,8 +1,9 @@
-const VERSION = 'invoice-v15';
+const VERSION = 'invoice-v17';
 const SHELL = [
   './',
   './index.html',
   './css/style.css',
+  './js/ai.js',
   './lib/dexie.min.js',
   './lib/pdf.min.js',
   './lib/pdf.worker.min.js',
@@ -45,7 +46,19 @@ self.addEventListener('fetch', e => {
   // Supabase API：只走网络
   if (url.hostname.endsWith('.supabase.co')) return;
 
-  // 本地资源：cache-first，后台刷新
+  // 应用代码（js/css，不含 lib）：网络优先——上传新文件后普通刷新一次即生效；离线回退缓存
+  if (url.origin === location.origin && /\.(js|css)$/i.test(url.pathname) && !url.pathname.includes('/lib/')) {
+    e.respondWith(
+      fetch(e.request).then(res => {
+        const copy = res.clone();
+        caches.open(VERSION).then(c => c.put(e.request, copy));
+        return res;
+      }).catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // 其他本地资源（页面/lib/图标）：cache-first，后台刷新
   if (url.origin === location.origin) {
     e.respondWith(
       caches.match(e.request).then(cached => {

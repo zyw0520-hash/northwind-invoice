@@ -8,8 +8,8 @@ import { extractPdfText, parseInvoiceText, inferDocType } from '../pdfParse.js';
 import { dlgConfirm } from '../dialog.js';
 import { aiSummary } from '../ai.js';
 
-const DOC_TYPES = ['发票', '送货单', '贷项通知单', '关税通知', '罚单', '租车费', '其他'];
-const PAY_STATUSES = ['未付', '已付', '部分付', '待确认', '争议中', '催缴中'];
+const DOC_TYPES = ['发票', '送货单', '政府通知', '其他'];
+const PAY_STATUSES = ['未提交付款申请', '已提交付款申请', '已付款', '有争议'];
 const TAX_RATES = [['0.19', '19%'], ['0.07', '7%'], ['0', '0%'], ['', '免税/未知']];
 
 const filters = { type: '', supplierId: '', payStatus: '', month: '', keyword: '' };
@@ -26,7 +26,7 @@ export async function render(el, ctx) {
 
   el.innerHTML = `
     <div class="page-head">
-      <div><h1>单据台账</h1><div class="sub">一行一张单据 · 发票 / 送货单 / 关税 / 罚单统一管理</div></div>
+      <div><h1>单据台账</h1><div class="sub">一行一张单据 · 发票 / 送货单 / 政府通知 / 其他统一管理</div></div>
       <div class="head-actions">
         <button class="btn" id="btn-export-csv">导出 CSV</button>
         <button class="btn primary" id="btn-new-doc">＋ 新建单据</button>
@@ -87,7 +87,7 @@ function docRow(d, nameOf, today, pdfIds) {
   const cls = dueClass(d, today);
   const statusBadge = cls === 'red' ? '<span class="badge b-red">已逾期</span>'
     : cls === 'yellow' ? '<span class="badge b-yellow">临近到期</span>'
-    : d.payStatus ? `<span class="badge ${d.payStatus === '已付' ? 'b-green' : d.payStatus === '待确认' ? 'b-blue' : ''}">${d.payStatus}</span>`
+    : d.payStatus ? `<span class="badge ${d.payStatus === '已付款' ? 'b-green' : d.payStatus === '已提交付款申请' ? 'b-blue' : ''}">${d.payStatus}</span>`
     : '';
   return `<tr>
     <td>${d.type}</td>
@@ -98,7 +98,7 @@ function docRow(d, nameOf, today, pdfIds) {
     <td class="num">${fmtEur(d.netAmount)}</td>
     <td class="num">${fmtEur(d.grossAmount)}</td>
     <td>${statusBadge || '—'}</td>
-    <td class="wrap">${escapeHtml(d.summary || '')}</td>
+    <td class="wrap" title="${escapeHtml(d.summary || '')}">${escapeHtml(d.summary || '')}</td>
     <td>${pdfIds?.has(d.id) ? `<button class="btn link sm" data-act="pdf" data-id="${d.id}">查看</button>` : '—'}</td>
     <td><div class="row-actions">
       <button class="btn link sm" data-act="edit" data-id="${d.id}">编辑</button>
@@ -123,7 +123,7 @@ function openDocForm(doc, ctx) {
   const overlay = document.getElementById('modal-overlay');
   const modal = document.getElementById('modal');
   const isEdit = !!doc;
-  const d = doc || { type: '发票', docDate: ctx.today, payStatus: '未付' };
+  const d = doc || { type: '发票', docDate: ctx.today, payStatus: '未提交付款申请' };
 
   const deliveries = cache.docs.filter(x => x.type === '送货单');
   const openLeads = []; // 挂线索在弹层里从库取

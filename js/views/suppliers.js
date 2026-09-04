@@ -99,7 +99,7 @@ function openSupForm(sup, ctx) {
       // 付款天数变更 → 按新天数重算该供应商所有未付单据的到期日（含 PDF 识别的明确日期，确认框提示）
       if (payDaysChanged && row.defaultPayDays > 0) {
         const openDocs = (await db.documents.where('supplierId').equals(sup.id).toArray())
-          .filter(d => d.payStatus !== '已付');
+          .filter(d => d.payStatus !== '已付款');
         if (openDocs.length) {
           const ok = await dlgConfirm(
             `默认付款天数已改为 ${row.defaultPayDays} 天。\n按新天数重算 ${sup.name} 名下 ${openDocs.length} 张未付单据的到期日？\n（将覆盖现有到期日，含 PDF 识别的明确日期）`,

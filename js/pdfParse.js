@@ -212,9 +212,9 @@ export function parseInvoiceText(text) {
       if (m && !NUM_STOP.test(m[1])) res.costCenter = m[1];
     }
 
-    // 摘要：Bezeichnung 标签后的描述文本（值同行；为空时取下一行非标签行）
+    // 摘要：Bezeichnung/Beschreibung 标签后的描述文本（值同行；为空时取下一行非标签行）
     if (!res.summary) {
-      const m = ln.match(/(?:^|\s)bezeichnung\s*[:\-]?\s*(.*)$/i);
+      const m = ln.match(/(?:^|\s)bezeichnung\s*[:\-]?\s*(.*)$/i) || ln.match(/(?:^|\s)beschreibung\s*[:\-]?\s*(.*)$/i);
       if (m) {
         let v = (m[1] || '').trim();
         if (!v && lines[i + 1]) v = lines[i + 1].trim();
@@ -228,37 +228,55 @@ export function parseInvoiceText(text) {
     }
   }
 
-  // 摘要兜底①：Miete/Betreff/Grund/Verwendungszweck 标签行（如 'Miete : August' → 'Miete August'）
+  // 摘要兜底①：Miete/Betreff/Grund/Verwendungszweck/Mietzeitraum/Fahrzeug/Leistungsperiode 标签行
   if (!res.summary) {
     for (const ln of lines) {
-      const m = ln.match(/\b(betreff|verwendungszweck|grund|miete)\s*[:#]\s*(.{2,80})/i);
+      const m = ln.match(/\b(mietzeitraum|miete|betreff|verwendungszweck|grund|fahrzeug|leistungsperiode|leistung|titel|beschreibung)\s*[:#]\s*(.{2,100})/i);
       if (!m) continue;
       const v = m[2].trim();
+      // 跳过：表头行（值含表格列名）、纯日期、纯标签
+      if (/\b(menge|einheit|preis|betrag|datum|nummer)\b/i.test(v)) continue;
+      if (/^\d/.test(v) && !/[A-Za-z]{3}/.test(v)) continue;
       if (/[A-Za-zäöüÄÖÜ]{3}/.test(v) && !/^(datum|nr\b|seite)/i.test(v)) {
-        res.summary = /^(betreff|verwendungszweck)$/i.test(m[1]) ? v : `${m[1]} ${v}`;
+        // betreff/verwendungszweck/beschreibung 的值本身就是摘要，不加前缀
+        const bare = /^(betreff|verwendungszweck|beschreibung|titel|grund|leistung)$/i.test(m[1]);
+        res.summary = bare ? v : `${m[1]} ${v}`;
         break;
       }
     }
   }
 
-  // 摘要兜底②：明细表第一行数据的货品描述（表头含 Bezeichnung+Menge 列，数据行含金额）
+  // 摘要兜底②：明细表第一行数据的货品描述（支持两种表头：Bezeichnung/Beschreibung + Menge/Einheit）
+  // 有金额行优先（发票），无金额行降级到数量（送货单）
   if (!res.summary) {
     for (let i = 0; i < lines.length - 1; i++) {
-      if (!/\bbezeichnung\b/i.test(lines[i]) || !/(menge|einzelpreis|betrag)/i.test(lines[i])) continue;
+      if (!/(bezeichnung|beschreibung)/i.test(lines[i]) || !/(menge|einheit|einzelpreis|preis|betrag)/i.test(lines[i])) continue;
       for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
         const row = lines[j];
-        if (!amountCandidates(row).length) continue;
+        const hasAmt = amountCandidates(row).length > 0;
+        const hasQty = /\b\d+[.,]?\d*\s*(stück|st|karton|palette|m³|m2|kg|l|flasche|monat|tag|woche)\b/i.test(row);
+        if (!hasAmt && !hasQty) continue; // 既无金额也无数量 → 不是数据行
         const toks = row.split(' ');
         let start = /^[A-Za-z]{0,4}\d/.test(toks[0] || '') ? 1 : 0; // 跳过货号（L1003 / A1 / 1）
         const words = [];
-        for (let k = start; k < toks.length && words.length < 3; k++) {
-          if (!/[A-Za-z]{2}/.test(toks[k]) || /^\d+[.,]\d+$/.test(toks[k])) break; // 遇数字列停
-          words.push(toks[k]);
+        for (let k = start; k < toks.length && words.length < 5; k++) {
+          const tok = toks[k];
+          if (/^\d+[.,]\d+$/.test(tok)) break; // 遇金额列停
+          if (/^\d+$/.test(tok)) {
+            // 裸数字：看下一个 token 是不是单位，是的话组合成数量+单位（如 "500 l"）加入
+            const next = toks[k + 1] || '';
+            if (/^(stück|st|palette|karton|m³|m2|kg|l|flasche|monat|tag|woche|einheit)$/i.test(next)) {
+              words.push(`${tok} ${next}`);
+              k++; continue;
+            }
+            continue; // 无单位的裸数字跳过
+          }
+          if (/^\d+\s*(stück|st|palette|karton|m³|m2|kg|l|monat|tag|woche)$/i.test(tok)) break; // 遇数量+单位（单 token）停
+          words.push(tok);
         }
-        if (words.join(' ').length >= 4) res.summary = words.join(' ');
-        break;
+        if (words.join(' ').length >= 4) { res.summary = words.join(' '); break; }
       }
-      break;
+      if (res.summary) break;
     }
   }
 

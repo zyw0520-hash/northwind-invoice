@@ -44,7 +44,7 @@ export async function setSetting(key, value) {
 
 // 校验并规范化一条单据；非法字段抛错（系统边界校验：来自表单的用户输入）
 export function validateDoc(d) {
-  if (!['发票', '送货单', '政府通知', '其他'].includes(d.type)) {
+  if (!['发票', '送货单', '政府通知', '报价单', '其他'].includes(d.type)) {
     throw new Error('请选择单据类型');
   }
   if (!d.docDate || !/^\d{4}-\d{2}-\d{2}$/.test(d.docDate)) throw new Error('请填写单据日期');

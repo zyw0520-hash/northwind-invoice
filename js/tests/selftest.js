@@ -296,7 +296,7 @@ export function runSelftest() {
       'Rechnungsdatum: 20.08.2026',
       'Zahlbar innerhalb von 14 Tagen ohne Abzug',
     ].join('\n'));
-    eq(p3.summary, 'Diesel');
+    eq(p3.summary, 'Diesel 500 l');
     eq(p3.dueDate, '2026-09-03');
   });
   t('parseInvoiceText 摘要兜底（Miete标签 / 明细表数据行）', () => {

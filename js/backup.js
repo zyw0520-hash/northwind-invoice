@@ -24,7 +24,7 @@ export async function exportJson() {
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const DOC_TYPES = ['发票', '送货单', '贷项通知单', '关税通知', '罚单', '租车费', '其他'];
+const DOC_TYPES = ['发票', '送货单', '政府通知', '其他'];
 
 // 导入备份：校验失败抛错；通过后按 id 覆盖合并
 export async function importJson(text) {

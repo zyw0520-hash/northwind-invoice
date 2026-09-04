@@ -44,7 +44,7 @@ export async function setSetting(key, value) {
 
 // 校验并规范化一条单据；非法字段抛错（系统边界校验：来自表单的用户输入）
 export function validateDoc(d) {
-  if (!['发票', '送货单', '贷项通知单', '关税通知', '罚单', '租车费', '其他'].includes(d.type)) {
+  if (!['发票', '送货单', '政府通知', '其他'].includes(d.type)) {
     throw new Error('请选择单据类型');
   }
   if (!d.docDate || !/^\d{4}-\d{2}-\d{2}$/.test(d.docDate)) throw new Error('请填写单据日期');
@@ -238,4 +238,41 @@ export async function dedupDocs() {
   }
   if (merged) notifyWrite();
   return { merged };
+}
+
+// ---------- 启动迁移：旧 DOC_TYPES / PAY_STATUSES → 新值 ----------
+// 迁移只做一次（用 settings 表记录），幂等
+const TYPE_MAP = {
+  '贷项通知单': '其他',
+  '关税通知': '政府通知',
+  '罚单': '其他',
+  '租车费': '其他',
+};
+const STATUS_MAP = {
+  '未付': '未提交付款申请',
+  '部分付': '未提交付款申请',
+  '待确认': '未提交付款申请',
+  '争议中': '有争议',
+  '催缴中': '已提交付款申请',
+  '已付': '已付款',
+};
+
+export async function migrateLegacyData() {
+  const done = await getSetting('migrate_v2_types', false);
+  if (done) return 0;
+  let n = 0;
+  const docs = await db.documents.toArray();
+  for (const d of docs) {
+    const patch = {};
+    if (TYPE_MAP[d.type]) patch.type = TYPE_MAP[d.type];
+    if (STATUS_MAP[d.payStatus]) patch.payStatus = STATUS_MAP[d.payStatus];
+    if (Object.keys(patch).length) {
+      patch.updatedAt = Date.now();
+      await db.documents.update(d.id, patch);
+      n++;
+    }
+  }
+  await setSetting('migrate_v2_types', true);
+  if (n) console.log(`[迁移] 已更新 ${n} 张单据的类型/付款状态`);
+  return n;
 }

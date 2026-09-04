@@ -109,8 +109,8 @@ export function findDuplicate(documents, { supplierId, docNumber, type }, exclud
 
 // 到期红黄灯：'red' 已逾期未付 / 'yellow' 7 天内到期 / null
 export function dueClass(doc, today, withinDays = 7) {
-  if (doc.type !== '发票' && doc.type !== '关税通知') return null;
-  if (!doc.dueDate || doc.payStatus === '已付') return null;
+  if (doc.type !== '发票' && doc.type !== '政府通知') return null;
+  if (!doc.dueDate || doc.payStatus === '已付款') return null;
   const days = daysBetween(today, doc.dueDate);
   if (days == null) return null;
   if (days < 0) return 'red';

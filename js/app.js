@@ -2,7 +2,7 @@
 // 启动顺序：迁移/种子 → 每日快照 → 首屏渲染 → 云同步（先拉取后种子，避免多设备重复）
 
 import './tests/selftest.js';
-import { db, updateDocument } from './db.js';
+import { db, updateDocument, migrateLegacyData } from './db.js';
 import { computeDueDate } from './models.js';
 import { seedIfEmpty } from './seed.js';
 import { maybeDailySnapshot } from './backup.js';
@@ -103,7 +103,7 @@ async function backfillDueDates() {
   const payOf = Object.fromEntries(sups.map(s => [s.id, s.defaultPayDays]));
   let n = 0;
   for (const d of docs) {
-    if (d.dueDate || d.payStatus === '已付' || !d.supplierId) continue;
+    if (d.dueDate || d.payStatus === '已付款' || !d.supplierId) continue;
     const due = computeDueDate(d.docDate, payOf[d.supplierId]);
     if (due) { await updateDocument(d.id, { dueDate: due }); n++; }
   }
@@ -119,6 +119,10 @@ async function backfillDueDates() {
   try {
     await maybeDailySnapshot();
   } catch (e) { console.warn('每日快照失败：', e); }
+
+  try {
+    await migrateLegacyData();
+  } catch (e) { console.warn('数据迁移失败：', e); }
 
   await renderTab(current.tab);
   refreshSyncIndicator();

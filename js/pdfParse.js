@@ -140,7 +140,7 @@ function guessSupplierName(lines) {
 
 export function inferDocType(text, docNumber) {
   const t = String(text);
-  if (/gutschrift/i.test(t)) return '贷项通知单';
+  if (/gutschrift/i.test(t)) return '其他'; // 贷项通知单归为其他
   if (!docNumber && /lieferschein\s*-?\s*(?:nummer|nr\.?)/i.test(t)) return '送货单';
   return null;
 }

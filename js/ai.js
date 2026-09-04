@@ -4,17 +4,17 @@
 import { getSetting } from './db.js';
 
 const BASE = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
-const SYS = `你是应付会计助理。请将发票/单据原文（德语或英语）逐字翻译成详细中文摘要，供会计入账使用。格式要求：
-1. 第一行：一句话概括业务类型（如"8月集装箱租赁费"）
-2. 后面逐条翻译所有明细行：货号、品名、数量、单价、金额
-3. 翻译付款条件、税率、其他重要信息
-4. 只输出翻译内容，不要加引号或解释性文字
+const SYS = `你是应付会计助理。请根据发票/单据原文（德语或英语），先理解这笔业务的本质，再用简体中文写一段精炼摘要（2-4行，80字以内），供会计入账参考。
+
+要求：
+1. 第一行：概括业务类型 + 期间/对象（如"8月集装箱租赁费"、"柴油553升采购"、"进口关税+逾期费"）
+2. 第二行：关键金额（净额、税率、总额）和付款条件
+3. 避免逐字翻译商品明细表格，只提炼核心业务信息
+4. 输出必须是中文，不要引号或解释性文字
+
 示例：
 8月集装箱租赁费
-L1003 可拆卸集装箱 3.0m³ 1.000个月 25.000 25.00
-L1501 可拆卸集装箱 7.0m³ 1.000个月 65.000 65.00
-净额90.00 19%增值税17.10 总额107.10
-付款条件：14天内付款有折扣（截至14.09.2026）`;
+净额90.00 19%增值税17.10 总额107.10，付款期限14天`;
 
 export async function getAiConfig() {
   const c = await getSetting('aiConfig', {});
@@ -33,7 +33,7 @@ export function maskSensitive(text) {
 export async function aiSummary(rawText) {
   const cfg = await getAiConfig();
   if (!cfg.key) return null;
-  const text = maskSensitive(rawText).slice(0, 5000);
+  const text = maskSensitive(rawText).slice(0, 3000);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 30000);
   try {
@@ -54,7 +54,7 @@ export async function aiSummary(rawText) {
     const data = JSON.parse(await res.text());
     const s = String(data.choices?.[0]?.message?.content || '').trim()
       .replace(/^[「"'\s]+|[。」"'\s]+$/g, '');
-    return s ? s.slice(0, 800) : null;
+    return s ? s.slice(0, 200) : null;
   } catch {
     return null;
   } finally {

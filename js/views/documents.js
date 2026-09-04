@@ -8,7 +8,7 @@ import { extractPdfText, parseInvoiceText, inferDocType } from '../pdfParse.js';
 import { dlgConfirm } from '../dialog.js';
 import { aiSummary } from '../ai.js';
 
-const DOC_TYPES = ['发票', '送货单', '政府通知', '其他'];
+const DOC_TYPES = ['发票', '送货单', '政府通知', '报价单', '其他'];
 const PAY_STATUSES = ['未提交付款申请', '已提交付款申请', '已付款', '有争议'];
 const TAX_RATES = [['0.19', '19%'], ['0.07', '7%'], ['0', '0%'], ['', '免税/未知']];
 

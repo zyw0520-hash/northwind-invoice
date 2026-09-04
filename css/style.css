@@ -113,13 +113,15 @@ input, select, textarea { font: inherit; color: inherit; }
 .btn.link:hover { text-decoration: underline; }
 
 /* ---------- 表格 ---------- */
-table.tbl { width: 100%; border-collapse: collapse; background: var(--card); }
+table.tbl { width: 100%; border-collapse: collapse; background: var(--card); table-layout: fixed; }
 .tbl th, .tbl td {
   padding: 9px 10px;
   border-bottom: 1px solid var(--line);
   text-align: left;
   white-space: nowrap;
   vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tbl th {
   font-size: 12px; color: var(--muted); font-weight: 600;
@@ -127,9 +129,9 @@ table.tbl { width: 100%; border-collapse: collapse; background: var(--card); }
   position: sticky; top: 0; z-index: 1;
 }
 .tbl tbody tr:hover { background: #f7faff; }
-.tbl td.wrap { white-space: normal; min-width: 140px; }
+.tbl td.wrap { white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 .tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
-.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.tbl-wrap { overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
 .row-actions { display: flex; gap: 2px; }
 
 /* 徽标 */

@@ -134,11 +134,11 @@ export function runSelftest() {
     eq(findDuplicate(docs, { type: '发票', supplierId: 's1', docNumber: '674675' }, '1'), null); // 排除自身
   });
   t('dueClass 红黄灯', () => {
-    eq(dueClass({ type: '发票', dueDate: '2026-08-27', payStatus: '未付' }, T), 'red');
-    eq(dueClass({ type: '发票', dueDate: '2026-09-05', payStatus: '未付' }, T), 'yellow');
-    eq(dueClass({ type: '发票', dueDate: '2026-09-05', payStatus: '已付' }, T), null);
-    eq(dueClass({ type: '发票', dueDate: '2026-10-05', payStatus: '未付' }, T), null);
-    eq(dueClass({ type: '送货单', dueDate: '2026-08-01', payStatus: '未付' }, T), null); // 送货单不参与
+    eq(dueClass({ type: '发票', dueDate: '2026-08-27', payStatus: '未提交付款申请' }, T), 'red');
+    eq(dueClass({ type: '发票', dueDate: '2026-09-05', payStatus: '未提交付款申请' }, T), 'yellow');
+    eq(dueClass({ type: '发票', dueDate: '2026-09-05', payStatus: '已付款' }, T), null);
+    eq(dueClass({ type: '发票', dueDate: '2026-10-05', payStatus: '未提交付款申请' }, T), null);
+    eq(dueClass({ type: '送货单', dueDate: '2026-08-01', payStatus: '未提交付款申请' }, T), null); // 送货单不参与
   });
   t('amountMismatch 差异超 5% 提示', () => {
     const m = amountMismatch({ grossAmount: 110 }, { grossAmount: 100 });
@@ -149,7 +149,7 @@ export function runSelftest() {
   });
   t('buildWorkbench 计数与排序', () => {
     const docs = [
-      { id: '1', type: '发票', supplierId: 's1', docNumber: 'A', docDate: '2026-08-01', dueDate: '2026-08-15', payStatus: '未付', summary: '' },
+      { id: '1', type: '发票', supplierId: 's1', docNumber: 'A', docDate: '2026-08-01', dueDate: '2026-08-15', payStatus: '未提交付款申请', summary: '' },
       { id: '2', type: '送货单', supplierId: 's1', docNumber: 'B', docDate: '2026-08-01', summary: '' },
     ];
     const leads = [{ id: 'l1', status: '等票中', registeredDate: '2026-08-01', orderedBy: 'Alex', description: '托盘' }];
@@ -266,7 +266,7 @@ export function runSelftest() {
     eq(p.taxAmount, 1724.25);
     eq(p.grossAmount, 10799.25);
     eq(inferDocType('Lieferschein-Nr. L22618967\nDatum 20.08.2026', null), '送货单');
-    eq(inferDocType('Rechnung mit Gutschrift-Hinweis', 'R1'), '贷项通知单');
+    eq(inferDocType('Rechnung mit Gutschrift-Hinweis', 'R1'), '其他'); // 贷项通知单归为其他
   });
   t('parseInvoiceText 百分比不混入金额', () => {
     const p = parseInvoiceText('Netto 100,00\nUSt 7,70 % 7,70\nGesamtbetrag 107,70');

@@ -32,6 +32,21 @@ export function deliveryAlerts(documents, today, thresholdDays = 14) {
   for (const d of documents) {
     if (d.type !== '送货单') continue;
     if (invoices.has(d.id)) continue;
+    if (d.payStatus === '已完成') continue;
+    const days = daysBetween(d.docDate, today);
+    if (days == null || days < thresholdDays) continue;
+    out.push({ doc: d, days });
+  }
+  out.sort((a, b) => b.days - a.days);
+  return out;
+}
+
+// 报价单等票（状态=等票中 超期）
+export function quoteAlerts(documents, today, thresholdDays = 14) {
+  const out = [];
+  for (const d of documents) {
+    if (d.type !== '报价单') continue;
+    if (d.payStatus !== '等票中') continue;
     const days = daysBetween(d.docDate, today);
     if (days == null || days < thresholdDays) continue;
     out.push({ doc: d, days });
@@ -110,7 +125,9 @@ export function findDuplicate(documents, { supplierId, docNumber, type }, exclud
 // 到期红黄灯：'red' 已逾期未付 / 'yellow' 7 天内到期 / null
 export function dueClass(doc, today, withinDays = 7) {
   if (doc.type !== '发票' && doc.type !== '政府通知') return null;
-  if (!doc.dueDate || doc.payStatus === '已付款') return null;
+  if (!doc.dueDate) return null;
+  // 各类型"已完成"状态跳过
+  if (doc.payStatus === '已付款' || doc.payStatus === '已付' || doc.payStatus === '已完成') return null;
   const days = daysBetween(today, doc.dueDate);
   if (days == null) return null;
   if (days < 0) return 'red';
@@ -139,6 +156,7 @@ export function buildWorkbench(documents, leads, suppliers, today, thresholds = 
     else if (cls === 'yellow') pendingPay.push(d);
   }
   const delivery = deliveryAlerts(documents, today, deliveryDays);
+  const quotes = quoteAlerts(documents, today, deliveryDays);
   const lead = leadAlerts(leads, today, leadDays);
   const gap = supplierGapAlerts(documents, suppliers, today);
 
@@ -152,6 +170,11 @@ export function buildWorkbench(documents, leads, suppliers, today, thresholds = 
       level: 'orange', icon: '🟠', kind: '送货单等票', days,
       title: `${nameOf[doc.supplierId] || '未指定供应商'} · ${doc.docNumber || '无单据号'}`,
       sub: `送货单 ${doc.docDate} 已 ${days} 天未等到发票`, doc,
+    })),
+    ...quotes.map(({ doc, days }) => ({
+      level: 'orange', icon: '🟠', kind: '报价单等票', days,
+      title: `${nameOf[doc.supplierId] || '未指定供应商'} · ${doc.docNumber || '无单据号'}`,
+      sub: `报价单 ${doc.docDate} 已 ${days} 天未等到发票`, doc,
     })),
     ...lead.map(({ lead, days }) => ({
       level: 'yellow', icon: '🟡', kind: '线索催票', days,
@@ -172,6 +195,7 @@ export function buildWorkbench(documents, leads, suppliers, today, thresholds = 
     counts: {
       overdue: overdue.length,
       deliveryPending: delivery.length,
+      quotePending: quotes.length,
       leadPending: lead.length,
       supplierGap: gap.length,
       dueSoon: pendingPay.length,

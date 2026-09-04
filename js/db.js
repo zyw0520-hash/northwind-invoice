@@ -240,39 +240,58 @@ export async function dedupDocs() {
   return { merged };
 }
 
-// ---------- 启动迁移：旧 DOC_TYPES / PAY_STATUSES → 新值 ----------
-// 迁移只做一次（用 settings 表记录），幂等
+// ---------- 启动迁移：旧类型/状态 → 按类型分状态 ----------
 const TYPE_MAP = {
   '贷项通知单': '其他',
   '关税通知': '政府通知',
   '罚单': '其他',
   '租车费': '其他',
 };
-const STATUS_MAP = {
-  '未付': '未提交付款申请',
-  '部分付': '未提交付款申请',
-  '待确认': '未提交付款申请',
-  '争议中': '有争议',
-  '催缴中': '已提交付款申请',
-  '已付': '已付款',
+// 旧 payStatus → 按类型选新状态
+const LEGACY_STATUS_TO_TYPE = {
+  '未提交付款申请':  { '发票': '未提交付款申请', '送货单': '等票中', '报价单': '等票中', '政府通知': '未付', '其他': '未处理' },
+  '已提交付款申请':  { '发票': '已提交付款申请', '送货单': '已完成',   '报价单': '已完成',   '政府通知': '未付', '其他': '已处理' },
+  '已付款':          { '发票': '已付款',       '送货单': '已完成',   '报价单': '已完成',   '政府通知': '已付', '其他': '已完成' },
+  '未付':            { '发票': '未提交付款申请', '送货单': '等票中', '报价单': '等票中', '政府通知': '未付', '其他': '未处理' },
+  '部分付':          { '发票': '未提交付款申请', '送货单': '等票中', '报价单': '等票中', '政府通知': '未付', '其他': '未处理' },
+  '待确认':          { '发票': '未提交付款申请', '送货单': '等票中', '报价单': '等票中', '政府通知': '未付', '其他': '未处理' },
+  '有争议':          { '发票': '有争议',       '送货单': '等票中', '报价单': '等票中', '政府通知': '有争议', '其他': '未处理' },
+  '争议中':          { '发票': '有争议',       '送货单': '等票中', '报价单': '等票中', '政府通知': '有争议', '其他': '未处理' },
+  '催缴中':          { '发票': '已提交付款申请', '送货单': '等票中', '报价单': '等票中', '政府通知': '未付', '其他': '未处理' },
+  '已付':            { '发票': '已付款',       '送货单': '已完成',   '报价单': '已完成',   '政府通知': '已付', '其他': '已完成' },
+};
+
+// 每种类型允许的状态（用于校验 + 兜底）
+const STATUS_BY_TYPE = {
+  '发票':     ['未提交付款申请', '已提交付款申请', '已付款', '有争议'],
+  '送货单':   ['等票中', '已完成'],
+  '报价单':   ['等票中', '已完成', '已拒绝'],
+  '政府通知': ['未付', '已付', '有争议'],
+  '其他':     ['未处理', '已完成', '已取消'],
 };
 
 export async function migrateLegacyData() {
-  const done = await getSetting('migrate_v2_types', false);
+  const done = await getSetting('migrate_v3_type_status', false);
   if (done) return 0;
   let n = 0;
   const docs = await db.documents.toArray();
   for (const d of docs) {
     const patch = {};
-    if (TYPE_MAP[d.type]) patch.type = TYPE_MAP[d.type];
-    if (STATUS_MAP[d.payStatus]) patch.payStatus = STATUS_MAP[d.payStatus];
+    let type = TYPE_MAP[d.type] || d.type;
+    if (TYPE_MAP[d.type]) patch.type = type;
+    const allowed = STATUS_BY_TYPE[type] || STATUS_BY_TYPE['其他'];
+    if (!allowed.includes(d.payStatus)) {
+      // 旧状态值不匹配当前类型，按类型重新映射
+      const m = (LEGACY_STATUS_TO_TYPE[d.payStatus] || LEGACY_STATUS_TO_TYPE['未提交付款申请'])[type];
+      patch.payStatus = m || allowed[0];
+    }
     if (Object.keys(patch).length) {
       patch.updatedAt = Date.now();
       await db.documents.update(d.id, patch);
       n++;
     }
   }
-  await setSetting('migrate_v2_types', true);
-  if (n) console.log(`[迁移] 已更新 ${n} 张单据的类型/付款状态`);
+  await setSetting('migrate_v3_type_status', true);
+  if (n) console.log(`[迁移] 已更新 ${n} 张单据的类型/状态`);
   return n;
 }

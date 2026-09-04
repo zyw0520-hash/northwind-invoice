@@ -103,7 +103,7 @@ async function backfillDueDates() {
   const payOf = Object.fromEntries(sups.map(s => [s.id, s.defaultPayDays]));
   let n = 0;
   for (const d of docs) {
-    if (d.dueDate || d.payStatus === '已付款' || !d.supplierId) continue;
+    if (d.dueDate || ['已付款', '已付', '已完成'].includes(d.payStatus) || !d.supplierId) continue;
     const due = computeDueDate(d.docDate, payOf[d.supplierId]);
     if (due) { await updateDocument(d.id, { dueDate: due }); n++; }
   }

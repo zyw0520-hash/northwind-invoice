@@ -9,8 +9,16 @@ import { dlgConfirm } from '../dialog.js';
 import { aiSummary } from '../ai.js';
 
 const DOC_TYPES = ['发票', '送货单', '政府通知', '报价单', '其他'];
-const PAY_STATUSES = ['未提交付款申请', '已提交付款申请', '已付款', '有争议'];
+const STATUS_BY_TYPE = {
+  '发票':     ['未提交付款申请', '已提交付款申请', '已付款', '有争议'],
+  '送货单':   ['等票中', '已完成'],
+  '报价单':   ['等票中', '已完成', '已拒绝'],
+  '政府通知': ['未付', '已付', '有争议'],
+  '其他':     ['未处理', '已完成', '已取消'],
+};
 const TAX_RATES = [['0.19', '19%'], ['0.07', '7%'], ['0', '0%'], ['', '免税/未知']];
+const defaultStatus = type => (STATUS_BY_TYPE[type] || STATUS_BY_TYPE['其他'])[0];
+const allStatuses = [...new Set(Object.values(STATUS_BY_TYPE).flat())];
 
 const filters = { type: '', supplierId: '', payStatus: '', month: '', keyword: '' };
 
@@ -35,7 +43,7 @@ export async function render(el, ctx) {
     <div class="filters">
       <select id="f-type"><option value="">全部类型</option>${DOC_TYPES.map(t => `<option ${filters.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <select id="f-supplier"><option value="">全部供应商</option>${suppliers.map(s => `<option value="${s.id}" ${filters.supplierId === s.id ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}</select>
-      <select id="f-status"><option value="">全部状态</option>${PAY_STATUSES.map(t => `<option ${filters.payStatus === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <select id="f-status"><option value="">全部状态</option>${allStatuses.map(t => `<option ${filters.payStatus === t ? 'selected' : ''}>${t}</option>`).join('')}</select>
       <input id="f-month" type="month" value="${filters.month}" title="按单据月份筛选">
       <input id="f-kw" type="search" placeholder="搜单据号 / 摘要" value="${escapeHtml(filters.keyword)}">
     </div>
@@ -87,7 +95,11 @@ function docRow(d, nameOf, today, pdfIds) {
   const cls = dueClass(d, today);
   const statusBadge = cls === 'red' ? '<span class="badge b-red">已逾期</span>'
     : cls === 'yellow' ? '<span class="badge b-yellow">临近到期</span>'
-    : d.payStatus ? `<span class="badge ${d.payStatus === '已付款' ? 'b-green' : d.payStatus === '已提交付款申请' ? 'b-blue' : ''}">${d.payStatus}</span>`
+    : d.payStatus ? `<span class="badge ${
+      ['已付款', '已付', '已完成'].includes(d.payStatus) ? 'b-green'
+      : ['已提交付款申请'].includes(d.payStatus) ? 'b-blue'
+      : ['有争议'].includes(d.payStatus) ? 'b-red'
+      : ''}">${d.payStatus}</span>`
     : '';
   return `<tr>
     <td>${d.type}</td>
@@ -157,13 +169,13 @@ function openDocForm(doc, ctx) {
         <input id="fld-tax" type="number" step="0.01" value="${d.taxAmount ?? ''}"></div>
       <div class="fld"><label>含税总额 EUR <span class="de">Gesamtbetrag / Brutto</span></label>
         <input id="fld-gross" type="number" step="0.01" value="${d.grossAmount ?? ''}"></div>
-      <div class="fld"><label>付款到期日 <span class="de">Fällig am</span></label>
+      <div class="fld" data-pay-only><label>付款到期日 <span class="de">Fällig am</span></label>
         <input id="fld-due" type="date" value="${d.dueDate || ''}"></div>
-      <div class="fld"><label>付款状态</label>
-        <select id="fld-paystatus">${PAY_STATUSES.map(t => `<option ${d.payStatus === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
-      <div class="fld"><label>付款日期</label>
+      <div class="fld"><label>状态</label>
+        <select id="fld-paystatus">${(STATUS_BY_TYPE[d.type] || allStatuses).map(t => `<option ${d.payStatus === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div class="fld" data-pay-only><label>付款日期</label>
         <input id="fld-paydate" type="date" value="${d.payDate || ''}"></div>
-      <div class="fld"><label>付款方式</label>
+      <div class="fld" data-pay-only><label>付款方式</label>
         <input id="fld-paymethod" value="${escapeHtml(d.payMethod || '')}" placeholder="银行转账 / 信用卡 / SEPA"></div>
       <div class="fld full"><label>对方 IBAN</label>
         <input id="fld-iban" value="${escapeHtml(d.counterpartyIban || '')}"></div>
@@ -244,6 +256,25 @@ function openDocForm(doc, ctx) {
   };
   $('fld-supplier').onchange = maybeDue;
   $('fld-date').onchange = maybeDue;
+
+  // 切换单据类型时，状态下拉同步切换选项
+  $('fld-type').onchange = () => {
+    const t = $('fld-type').value;
+    const statuses = STATUS_BY_TYPE[t] || allStatuses;
+    const cur = $('fld-paystatus').value;
+    $('fld-paystatus').innerHTML = statuses.map(s => `<option ${cur === s ? 'selected' : ''}>${s}</option>`).join('');
+    // 当前值不在新选项里，重置为默认
+    if (!statuses.includes($('fld-paystatus').value)) $('fld-paystatus').value = statuses[0];
+    // 非发票类型隐藏付款相关字段
+    const isInvoice = t === '发票';
+    const payFields = modal.querySelectorAll('[data-pay-only]');
+    payFields.forEach(f => f.hidden = !isInvoice);
+  };
+  // 初始化隐藏非发票付款字段
+  if (d.type !== '发票') {
+    const payFields = modal.querySelectorAll('[data-pay-only]');
+    payFields.forEach(f => f.hidden = true);
+  }
   maybeDue(); // 打开表单时：已有供应商默认天数且到期日为空 → 自动补算（如先挂供应商后补付款天数的场景）
   updateRateHint(); // 打开表单时：已有金额但没选税率 → 显示提醒
 

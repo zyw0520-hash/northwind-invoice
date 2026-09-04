@@ -1,4 +1,4 @@
-const VERSION = 'invoice-v20';
+const VERSION = 'invoice-v21';
 const SHELL = [
   './',
   './index.html',
